@@ -78,7 +78,7 @@ impl TcpListener {
         let fd = SharedFd::new(sys_listener.into_raw_fd())?;
 
         #[cfg(windows)]
-        let fd = unimplemented!();
+        let fd = SharedFd::new(sys_listener.into_raw_fd())?;
 
         Ok(Self::from_shared_fd(fd))
     }
@@ -158,12 +158,15 @@ impl TcpListener {
             })
     }
 
-    #[cfg(all(unix, feature = "legacy"))]
+    /// Set the socket driver 
     fn set_non_blocking(_socket: &socket2::Socket) -> io::Result<()> {
         crate::driver::CURRENT.with(|x| match x {
             // TODO: windows ioring support
+            #[cfg(all(target_os = "windows"))]
+            crate::driver::Inner::Uring(_)=>Ok(()),
             #[cfg(all(target_os = "linux", feature = "iouring"))]
             crate::driver::Inner::Uring(_) => Ok(()),
+            #[cfg(all(target_os = "linux", feature ="legacy"))]
             crate::driver::Inner::Legacy(_) => _socket.set_nonblocking(true),
         })
     }

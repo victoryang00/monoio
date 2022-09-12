@@ -91,6 +91,8 @@ pub trait Driver {
 scoped_thread_local!(pub(crate) static CURRENT: Inner);
 
 pub(crate) enum Inner {
+    #[cfg(all(target_os = "windows", feature = "iouring"))]
+    IORing(std::rc::Rc<std::cell::UnsafeCell<RingInner>>)
     #[cfg(all(target_os = "linux", feature = "iouring"))]
     Uring(std::rc::Rc<std::cell::UnsafeCell<UringInner>>),
     #[cfg(all(unix, feature = "legacy"))]
