@@ -49,6 +49,9 @@ pub(crate) struct CompletionMeta {
 }
 
 pub(crate) trait OpAble {
+    #[cfg(all(target_os = "windows", feature = "iouring"))]
+    fn ring_op(&mut self) -> ioring_rs::squeue::Entry;
+
     #[cfg(all(target_os = "linux", feature = "iouring"))]
     fn uring_op(&mut self) -> io_uring::squeue::Entry;
 

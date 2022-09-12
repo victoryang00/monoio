@@ -158,15 +158,15 @@ impl TcpListener {
             })
     }
 
-    /// Set the socket driver 
+    /// Set the socket driver
     fn set_non_blocking(_socket: &socket2::Socket) -> io::Result<()> {
         crate::driver::CURRENT.with(|x| match x {
             // TODO: windows ioring support
             #[cfg(all(target_os = "windows"))]
-            crate::driver::Inner::Uring(_)=>Ok(()),
+            crate::driver::Inner::Ring(_) => Ok(()),
             #[cfg(all(target_os = "linux", feature = "iouring"))]
             crate::driver::Inner::Uring(_) => Ok(()),
-            #[cfg(all(target_os = "linux", feature ="legacy"))]
+            #[cfg(all(target_os = "linux", feature = "legacy"))]
             crate::driver::Inner::Legacy(_) => _socket.set_nonblocking(true),
         })
     }

@@ -1,5 +1,4 @@
 /// Monoio Driver.
-// #[cfg(unix)]
 pub(crate) mod op;
 pub(crate) mod shared_fd;
 #[cfg(feature = "sync")]
@@ -7,6 +6,8 @@ pub(crate) mod thread;
 
 #[cfg(all(unix, feature = "legacy"))]
 mod legacy;
+#[cfg(all(target_os = "windows", feature = "iouring"))]
+mod ring;
 #[cfg(all(target_os = "linux", feature = "iouring"))]
 mod uring;
 
@@ -22,17 +23,11 @@ use scoped_tls::scoped_thread_local;
 
 #[cfg(all(unix, feature = "legacy"))]
 pub use self::legacy::LegacyDriver;
-// #[cfg(windows)]
-// pub mod op {
-//     pub struct CompletionMeta {}
-//     pub struct Op<T> {
-//         pub data: T,
-//     }
-//     pub trait OpAble {}
-// }
 #[cfg(all(unix, feature = "legacy"))]
 use self::legacy::LegacyInner;
 use self::op::{CompletionMeta, Op, OpAble};
+#[cfg(all(target_os = "windows", feature = "iouring"))]
+use self::ring::RingInner;
 #[cfg(all(target_os = "linux", feature = "iouring"))]
 pub use self::uring::IoUringDriver;
 #[cfg(all(target_os = "linux", feature = "iouring"))]
@@ -92,7 +87,7 @@ scoped_thread_local!(pub(crate) static CURRENT: Inner);
 
 pub(crate) enum Inner {
     #[cfg(all(target_os = "windows", feature = "iouring"))]
-    IORing(std::rc::Rc<std::cell::UnsafeCell<RingInner>>)
+    Ring(std::rc::Rc<std::cell::UnsafeCell<RingInner>>),
     #[cfg(all(target_os = "linux", feature = "iouring"))]
     Uring(std::rc::Rc<std::cell::UnsafeCell<UringInner>>),
     #[cfg(all(unix, feature = "legacy"))]
@@ -103,7 +98,7 @@ impl Inner {
     fn submit_with<T: OpAble>(&self, data: T) -> io::Result<Op<T>> {
         match self {
             #[cfg(windows)]
-            _ => unimplemented!(),
+            Inner::Ring(this) => RingInner::submit_with_data(this, data),
             #[cfg(all(target_os = "linux", feature = "iouring"))]
             Inner::Uring(this) => UringInner::submit_with_data(this, data),
             #[cfg(all(unix, feature = "legacy"))]
