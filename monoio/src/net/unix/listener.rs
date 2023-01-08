@@ -92,8 +92,9 @@ impl UnixListener {
 impl Stream for UnixListener {
     type Item = io::Result<(UnixStream, SocketAddr)>;
 
-    type NextFuture<'a> = impl Future<Output = Option<Self::Item>>;
+    type NextFuture<'a> = impl Future<Output = Option<Self::Item>> + 'a;
 
+    #[inline]
     fn next(&mut self) -> Self::NextFuture<'_> {
         async move { Some(self.accept().await) }
     }
@@ -108,12 +109,14 @@ impl std::fmt::Debug for UnixListener {
 }
 
 impl AsRawFd for UnixListener {
+    #[inline]
     fn as_raw_fd(&self) -> RawFd {
         self.fd.raw_fd()
     }
 }
 
 impl Drop for UnixListener {
+    #[inline]
     fn drop(&mut self) {
         self.sys_listener.take().unwrap().into_raw_fd();
     }

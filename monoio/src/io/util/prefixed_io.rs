@@ -34,11 +34,11 @@ impl<I, P> PrefixedReadIo<I, P> {
 }
 
 impl<I: AsyncReadRent, P: std::io::Read> AsyncReadRent for PrefixedReadIo<I, P> {
-    type ReadFuture<'a, T> = impl std::future::Future<Output = crate::BufResult<usize, T>>
+    type ReadFuture<'a, T> = impl std::future::Future<Output = crate::BufResult<usize, T>> + 'a
     where
         T: IoBufMut + 'a, Self: 'a;
 
-    type ReadvFuture<'a, T> = impl std::future::Future<Output = crate::BufResult<usize, T>>
+    type ReadvFuture<'a, T> = impl std::future::Future<Output = crate::BufResult<usize, T>> + 'a
     where
         T: IoVecBufMut + 'a, Self: 'a;
 
@@ -98,18 +98,22 @@ impl<I: AsyncWriteRent, P> AsyncWriteRent for PrefixedReadIo<I, P> {
 
     type ShutdownFuture<'a> = I::ShutdownFuture<'a> where Self: 'a;
 
+    #[inline]
     fn write<T: IoBuf>(&mut self, buf: T) -> Self::WriteFuture<'_, T> {
         self.io.write(buf)
     }
 
+    #[inline]
     fn writev<T: IoVecBuf>(&mut self, buf_vec: T) -> Self::WritevFuture<'_, T> {
         self.io.writev(buf_vec)
     }
 
+    #[inline]
     fn flush(&mut self) -> Self::FlushFuture<'_> {
         self.io.flush()
     }
 
+    #[inline]
     fn shutdown(&mut self) -> Self::ShutdownFuture<'_> {
         self.io.shutdown()
     }

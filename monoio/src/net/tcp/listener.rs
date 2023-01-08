@@ -175,8 +175,9 @@ impl TcpListener {
 impl Stream for TcpListener {
     type Item = io::Result<(TcpStream, SocketAddr)>;
 
-    type NextFuture<'a> = impl Future<Output = Option<Self::Item>>;
+    type NextFuture<'a> = impl Future<Output = Option<Self::Item>> + 'a;
 
+    #[inline]
     fn next(&mut self) -> Self::NextFuture<'_> {
         async move { Some(self.accept().await) }
     }
@@ -190,6 +191,7 @@ impl std::fmt::Debug for TcpListener {
 
 #[cfg(unix)]
 impl AsRawFd for TcpListener {
+    #[inline]
     fn as_raw_fd(&self) -> RawFd {
         self.fd.raw_fd()
     }
@@ -203,6 +205,7 @@ impl AsRawHandle for TcpListener {
 }
 
 impl Drop for TcpListener {
+    #[inline]
     fn drop(&mut self) {
         #[cfg(unix)]
         self.sys_listener.take().unwrap().into_raw_fd();

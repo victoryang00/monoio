@@ -70,10 +70,10 @@ impl<R> BufReader<R> {
 }
 
 impl<R: AsyncReadRent> AsyncReadRent for BufReader<R> {
-    type ReadFuture<'a, T>  = impl Future<Output = crate::BufResult<usize, T>> where
+    type ReadFuture<'a, T>  = impl Future<Output = crate::BufResult<usize, T>> + 'a where
         T: IoBufMut + 'a, R: 'a;
 
-    type ReadvFuture<'a, T> = impl Future<Output = crate::BufResult<usize, T>> where
+    type ReadvFuture<'a, T> = impl Future<Output = crate::BufResult<usize, T>> + 'a where
         T: IoVecBufMut + 'a, R: 'a;
 
     fn read<T: IoBufMut>(&mut self, mut buf: T) -> Self::ReadFuture<'_, T> {
@@ -171,18 +171,22 @@ impl<R: AsyncReadRent + AsyncWriteRent> AsyncWriteRent for BufReader<R> {
 
     type ShutdownFuture<'a> = R::ShutdownFuture<'a> where R: 'a;
 
+    #[inline]
     fn write<T: IoBuf>(&mut self, buf: T) -> Self::WriteFuture<'_, T> {
         self.inner.write(buf)
     }
 
+    #[inline]
     fn writev<T: IoVecBuf>(&mut self, buf_vec: T) -> Self::WritevFuture<'_, T> {
         self.inner.writev(buf_vec)
     }
 
+    #[inline]
     fn flush(&mut self) -> Self::FlushFuture<'_> {
         self.inner.flush()
     }
 
+    #[inline]
     fn shutdown(&mut self) -> Self::ShutdownFuture<'_> {
         self.inner.shutdown()
     }

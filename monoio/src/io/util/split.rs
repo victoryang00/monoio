@@ -66,11 +66,12 @@ impl<'t, Inner> AsyncReadRent for ReadHalf<'t, Inner>
 where
     Inner: AsyncReadRent,
 {
-    type ReadFuture<'a, B> = impl Future<Output = crate::BufResult<usize, B>> where
+    type ReadFuture<'a, B> = impl Future<Output = crate::BufResult<usize, B>> + 'a where
         't: 'a, B: IoBufMut + 'a, Inner: 'a;
-    type ReadvFuture<'a, B> = impl Future<Output = crate::BufResult<usize, B>> where
+    type ReadvFuture<'a, B> = impl Future<Output = crate::BufResult<usize, B>> + 'a where
         't: 'a, B: IoVecBufMut + 'a, Inner: 'a;
 
+    #[inline]
     fn read<T: IoBufMut>(&mut self, buf: T) -> Self::ReadFuture<'_, T>
     where
         T: IoBufMut,
@@ -80,6 +81,7 @@ where
         raw_stream.read(buf)
     }
 
+    #[inline]
     fn readv<T: IoVecBufMut>(&mut self, buf: T) -> Self::ReadvFuture<'_, T> {
         // Submit the read operation
         let raw_stream = unsafe { &mut *(self.0 as *const Inner as *mut Inner) };
@@ -92,15 +94,16 @@ impl<'t, Inner> AsyncWriteRent for WriteHalf<'t, Inner>
 where
     Inner: AsyncWriteRent,
 {
-    type WriteFuture<'a, B> = impl Future<Output = crate::BufResult<usize, B>> where
+    type WriteFuture<'a, B> = impl Future<Output = crate::BufResult<usize, B>> + 'a where
         't: 'a, B: IoBuf + 'a, Inner: 'a;
-    type WritevFuture<'a, B> = impl Future<Output = crate::BufResult<usize, B>> where
+    type WritevFuture<'a, B> = impl Future<Output = crate::BufResult<usize, B>> + 'a where
         't: 'a, B: IoVecBuf + 'a, Inner: 'a;
-    type FlushFuture<'a> = impl Future<Output = io::Result<()>> where
+    type FlushFuture<'a> = impl Future<Output = io::Result<()>> + 'a where
         't: 'a, Inner: 'a;
-    type ShutdownFuture<'a> = impl Future<Output = io::Result<()>> where
+    type ShutdownFuture<'a> = impl Future<Output = io::Result<()>> + 'a where
         't: 'a, Inner: 'a;
 
+    #[inline]
     fn write<T: IoBuf>(&mut self, buf: T) -> Self::WriteFuture<'_, T>
     where
         T: IoBuf,
@@ -110,16 +113,19 @@ where
         raw_stream.write(buf)
     }
 
+    #[inline]
     fn writev<T: IoVecBuf>(&mut self, buf_vec: T) -> Self::WritevFuture<'_, T> {
         let raw_stream = unsafe { &mut *(self.0 as *const Inner as *mut Inner) };
         raw_stream.writev(buf_vec)
     }
 
+    #[inline]
     fn flush(&mut self) -> Self::FlushFuture<'_> {
         let raw_stream = unsafe { &mut *(self.0 as *const Inner as *mut Inner) };
         raw_stream.flush()
     }
 
+    #[inline]
     fn shutdown(&mut self) -> Self::ShutdownFuture<'_> {
         let raw_stream = unsafe { &mut *(self.0 as *const Inner as *mut Inner) };
         raw_stream.shutdown()
@@ -143,6 +149,7 @@ where
         (OwnedReadHalf(shared.clone()), OwnedWriteHalf(shared))
     }
 
+    #[inline]
     fn split(&mut self) -> (Self::Read<'_>, Self::Write<'_>) {
         (ReadHalf(&*self), WriteHalf(&*self))
     }
@@ -152,21 +159,23 @@ impl<Inner> AsyncReadRent for OwnedReadHalf<Inner>
 where
     Inner: AsyncReadRent,
 {
-    type ReadFuture<'a, T> = impl std::future::Future<Output = crate::BufResult<usize, T>>
+    type ReadFuture<'a, T> = impl std::future::Future<Output = crate::BufResult<usize, T>> + 'a
     where
         Self: 'a,
         T: crate::buf::IoBufMut + 'a;
 
-    type ReadvFuture<'a, T> = impl std::future::Future<Output = crate::BufResult<usize, T>>
+    type ReadvFuture<'a, T> = impl std::future::Future<Output = crate::BufResult<usize, T>> + 'a
     where
         Self: 'a,
         T: crate::buf::IoVecBufMut + 'a;
 
+    #[inline]
     fn read<T: crate::buf::IoBufMut>(&mut self, buf: T) -> Self::ReadFuture<'_, T> {
         let stream = unsafe { &mut *self.0.get() };
         stream.read(buf)
     }
 
+    #[inline]
     fn readv<T: crate::buf::IoVecBufMut>(&mut self, buf: T) -> Self::ReadvFuture<'_, T> {
         let stream = unsafe { &mut *self.0.get() };
         stream.readv(buf)
@@ -177,39 +186,43 @@ impl<Inner> AsyncWriteRent for OwnedWriteHalf<Inner>
 where
     Inner: AsyncWriteRent,
 {
-    type WriteFuture<'a, T> =  impl Future<Output = crate::BufResult<usize, T>>
+    type WriteFuture<'a, T> =  impl Future<Output = crate::BufResult<usize, T>> + 'a
     where
         Self: 'a,
         T: crate::buf::IoBuf + 'a;
 
-    type WritevFuture<'a, T> =  impl Future<Output = crate::BufResult<usize, T>>
+    type WritevFuture<'a, T> =  impl Future<Output = crate::BufResult<usize, T>> + 'a
     where
         Self: 'a,
         T: crate::buf::IoVecBuf + 'a;
 
-    type FlushFuture<'a> = impl Future<Output = std::io::Result<()>>
+    type FlushFuture<'a> = impl Future<Output = std::io::Result<()>> + 'a
     where
         Self: 'a;
 
-    type ShutdownFuture<'a> = impl Future<Output = std::io::Result<()>>
+    type ShutdownFuture<'a> = impl Future<Output = std::io::Result<()>> + 'a
     where
         Self: 'a;
 
+    #[inline]
     fn write<T: crate::buf::IoBuf>(&mut self, buf: T) -> Self::WriteFuture<'_, T> {
         let stream = unsafe { &mut *self.0.get() };
         stream.write(buf)
     }
 
+    #[inline]
     fn writev<T: crate::buf::IoVecBuf>(&mut self, buf_vec: T) -> Self::WritevFuture<'_, T> {
         let stream = unsafe { &mut *self.0.get() };
         stream.writev(buf_vec)
     }
 
+    #[inline]
     fn flush(&mut self) -> Self::FlushFuture<'_> {
         let stream = unsafe { &mut *self.0.get() };
         stream.flush()
     }
 
+    #[inline]
     fn shutdown(&mut self) -> Self::ShutdownFuture<'_> {
         let stream = unsafe { &mut *self.0.get() };
         stream.shutdown()
@@ -221,6 +234,7 @@ where
     T: AsyncWriteRent,
 {
     /// reunite write half
+    #[inline]
     pub fn reunite(self, other: OwnedWriteHalf<T>) -> Result<T, ReuniteError<T>> {
         reunite(self, other)
     }
@@ -231,6 +245,7 @@ where
     T: AsyncWriteRent,
 {
     /// reunite read half
+    #[inline]
     pub fn reunite(self, other: OwnedReadHalf<T>) -> Result<T, ReuniteError<T>> {
         reunite(other, self)
     }
@@ -240,6 +255,7 @@ impl<T> Drop for OwnedWriteHalf<T>
 where
     T: AsyncWriteRent,
 {
+    #[inline]
     fn drop(&mut self) {
         let write = unsafe { &mut *self.0.get() };
         // Notes:: shutdown is an async function but rust currently does not support async drop

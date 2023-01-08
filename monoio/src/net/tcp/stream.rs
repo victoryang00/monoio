@@ -85,26 +85,31 @@ impl TcpStream {
     }
 
     /// Return the local address that this stream is bound to.
+    #[inline]
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.meta.local_addr()
     }
 
     /// Return the remote address that this stream is connected to.
+    #[inline]
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         self.meta.peer_addr()
     }
 
     /// Get the value of the `TCP_NODELAY` option on this socket.
+    #[inline]
     pub fn nodelay(&self) -> io::Result<bool> {
         self.meta.no_delay()
     }
 
     /// Set the value of the `TCP_NODELAY` option on this socket.
+    #[inline]
     pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
         self.meta.set_no_delay(nodelay)
     }
 
     /// Set the value of the `SO_KEEPALIVE` option on this socket.
+    #[inline]
     pub fn set_tcp_keepalive(
         &self,
         time: Option<Duration>,
@@ -113,15 +118,23 @@ impl TcpStream {
     ) -> io::Result<()> {
         self.meta.set_tcp_keepalive(time, interval, retries)
     }
+
+    /// Creates new `TcpStream` from a `std::net::TcpStream`.
+    pub fn from_std(stream: std::net::TcpStream) -> io::Result<Self> {
+        let fd = stream.into_raw_fd();
+        Ok(Self::from_shared_fd(SharedFd::new(fd)?))
+    }
 }
 
 impl AsReadFd for TcpStream {
+    #[inline]
     fn as_reader_fd(&mut self) -> &SharedFdWrapper {
         SharedFdWrapper::new(&self.fd)
     }
 }
 
 impl AsWriteFd for TcpStream {
+    #[inline]
     fn as_writer_fd(&mut self) -> &SharedFdWrapper {
         SharedFdWrapper::new(&self.fd)
     }
@@ -129,6 +142,7 @@ impl AsWriteFd for TcpStream {
 
 #[cfg(unix)]
 impl IntoRawFd for TcpStream {
+    #[inline]
     fn into_raw_fd(self) -> RawFd {
         self.fd
             .try_unwrap()
@@ -137,6 +151,7 @@ impl IntoRawFd for TcpStream {
 }
 #[cfg(unix)]
 impl AsRawFd for TcpStream {
+    #[inline]
     fn as_raw_fd(&self) -> RawFd {
         self.fd.raw_fd()
     }
@@ -144,6 +159,7 @@ impl AsRawFd for TcpStream {
 
 #[cfg(windows)]
 impl IntoRawHandle for TcpStream {
+    #[inline]
     fn into_raw_handle(self) -> RawHandle {
         self.fd
             .try_unwrap()
@@ -152,6 +168,7 @@ impl IntoRawHandle for TcpStream {
 }
 #[cfg(windows)]
 impl AsRawHandle for TcpStream {
+    #[inline]
     fn as_raw_handle(&self) -> RawHandle {
         self.fd.raw_handle()
     }
@@ -171,21 +188,25 @@ impl AsyncWriteRent for TcpStream {
     type FlushFuture<'a> = impl Future<Output = io::Result<()>>;
     type ShutdownFuture<'a> = impl Future<Output = io::Result<()>>;
 
+    #[inline]
     fn write<T: IoBuf>(&mut self, buf: T) -> Self::WriteFuture<'_, T> {
         // Submit the write operation
         let op = Op::send(&self.fd, buf).unwrap();
         op.write()
     }
 
+    #[inline]
     fn writev<T: IoVecBuf>(&mut self, buf_vec: T) -> Self::WritevFuture<'_, T> {
         let op = Op::writev(&self.fd, buf_vec).unwrap();
         op.write()
     }
 
+    #[inline]
     fn flush(&mut self) -> Self::FlushFuture<'_> {
         // Tcp stream does not need flush.
         async move { Ok(()) }
     }
+
     #[cfg(unix)]
     fn shutdown(&mut self) -> Self::ShutdownFuture<'_> {
         // We could use shutdown op here, which requires kernel 5.11+.
@@ -197,6 +218,7 @@ impl AsyncWriteRent for TcpStream {
         };
         async move { res }
     }
+
     #[cfg(windows)]
     fn shutdown(&mut self) -> Self::ShutdownFuture<'_> {
         async { unimplemented!() }
@@ -209,16 +231,94 @@ impl AsyncReadRent for TcpStream {
     type ReadvFuture<'a, B> = impl std::future::Future<Output = crate::BufResult<usize, B>> where
         B: IoVecBufMut + 'a;
 
+    #[inline]
     fn read<T: IoBufMut>(&mut self, buf: T) -> Self::ReadFuture<'_, T> {
         // Submit the read operation
         let op = Op::recv(&self.fd, buf).unwrap();
         op.read()
     }
 
+    #[inline]
     fn readv<T: IoVecBufMut>(&mut self, buf: T) -> Self::ReadvFuture<'_, T> {
         // Submit the read operation
         let op = Op::readv(&self.fd, buf).unwrap();
         op.read()
+    }
+}
+
+#[cfg(all(unix, feature = "legacy", feature = "tokio-compat"))]
+impl tokio::io::AsyncRead for TcpStream {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<io::Result<()>> {
+        unsafe {
+            let slice = buf.unfilled_mut();
+            let raw_buf = crate::buf::RawBuf::new(slice.as_ptr() as *const u8, slice.len());
+            let mut recv = Op::recv_raw(&self.fd, raw_buf);
+            let ret = ready!(crate::driver::op::PollLegacy::poll_legacy(&mut recv, cx));
+
+            std::task::Poll::Ready(ret.result.map(|n| {
+                buf.assume_init(n as usize);
+                buf.advance(n as usize);
+            }))
+        }
+    }
+}
+
+#[cfg(all(unix, feature = "legacy", feature = "tokio-compat"))]
+impl tokio::io::AsyncWrite for TcpStream {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<Result<usize, io::Error>> {
+        unsafe {
+            let raw_buf = crate::buf::RawBuf::new(buf.as_ptr() as *const u8, buf.len());
+            let mut send = Op::send_raw(&self.fd, raw_buf);
+            let ret = ready!(crate::driver::op::PollLegacy::poll_legacy(&mut send, cx));
+
+            std::task::Poll::Ready(ret.result.map(|n| n as usize))
+        }
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), io::Error>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), io::Error>> {
+        let fd = self.as_raw_fd();
+        let res = match unsafe { libc::shutdown(fd, libc::SHUT_WR) } {
+            -1 => Err(io::Error::last_os_error()),
+            _ => Ok(()),
+        };
+        std::task::Poll::Ready(res)
+    }
+
+    fn poll_write_vectored(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        bufs: &[std::io::IoSlice<'_>],
+    ) -> std::task::Poll<Result<usize, io::Error>> {
+        unsafe {
+            let raw_buf =
+                crate::buf::RawBufVectored::new(bufs.as_ptr() as *const libc::iovec, bufs.len());
+            let mut writev = Op::writev_raw(&self.fd, raw_buf);
+            let ret = ready!(crate::driver::op::PollLegacy::poll_legacy(&mut writev, cx));
+
+            std::task::Poll::Ready(ret.result.map(|n| n as usize))
+        }
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        true
     }
 }
 

@@ -19,8 +19,6 @@ use std::{
     time::Duration,
 };
 
-use scoped_tls::scoped_thread_local;
-
 #[cfg(all(unix, feature = "legacy"))]
 pub use self::legacy::LegacyDriver;
 #[cfg(all(unix, feature = "legacy"))]

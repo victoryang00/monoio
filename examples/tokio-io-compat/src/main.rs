@@ -1,18 +1,13 @@
-//! HTTP client example with hyper in compatible mode.
+//! HTTP client example with hyper in compatible mode(without cost).
 //!
-//! It will try to fetch http://127.0.0.1:23300/monoio and print the
+//! It will try to fetch https://www.bytedance.com/ and print the
 //! response.
 //!
-//! Note:
-//! It is not recommended to use this example as a production code.
-//! The `hyper` require `Send` for a future and obviously the future
-//! is not `Send` in monoio. So we just use some unsafe code to let
-//! it pass which infact not a good solution but the only way to
-//! make it work without modifying hyper.
+//! It looks like the `hyper_client.rs` in example. The difference is
+//! in this version the tokio AsyncRead and AsyncWrite is implemented
+//! without additional cost because we only enable legacy feature.
 
 use std::{future::Future, pin::Pin};
-
-use monoio_compat::TcpStreamCompat;
 
 #[derive(Clone)]
 struct HyperExecutor;
@@ -22,6 +17,7 @@ where
     F: Future + 'static,
     F::Output: 'static,
 {
+    #[inline]
     fn execute(&self, fut: F) {
         monoio::spawn(fut);
     }
@@ -38,6 +34,7 @@ impl tower_service::Service<hyper::Uri> for HyperConnector {
     #[allow(clippy::type_complexity)]
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
+    #[inline]
     fn poll_ready(
         &mut self,
         _: &mut std::task::Context<'_>,
@@ -54,16 +51,18 @@ impl tower_service::Service<hyper::Uri> for HyperConnector {
         let b: Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>> =
             Box::pin(async move {
                 let conn = monoio::net::TcpStream::connect(address).await?;
-                let hyper_conn = HyperConnection(TcpStreamCompat::new(conn));
+                let hyper_conn = HyperConnection(conn);
                 Ok(hyper_conn)
             });
+        // Use transmust to make future Send(infact it is not)
         unsafe { std::mem::transmute(b) }
     }
 }
 
-struct HyperConnection(TcpStreamCompat);
+struct HyperConnection(monoio::net::TcpStream);
 
 impl tokio::io::AsyncRead for HyperConnection {
+    #[inline]
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -74,6 +73,7 @@ impl tokio::io::AsyncRead for HyperConnection {
 }
 
 impl tokio::io::AsyncWrite for HyperConnection {
+    #[inline]
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -82,6 +82,7 @@ impl tokio::io::AsyncWrite for HyperConnection {
         Pin::new(&mut self.0).poll_write(cx, buf)
     }
 
+    #[inline]
     fn poll_flush(
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -89,6 +90,7 @@ impl tokio::io::AsyncWrite for HyperConnection {
         Pin::new(&mut self.0).poll_flush(cx)
     }
 
+    #[inline]
     fn poll_shutdown(
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -98,6 +100,7 @@ impl tokio::io::AsyncWrite for HyperConnection {
 }
 
 impl hyper::client::connect::Connection for HyperConnection {
+    #[inline]
     fn connected(&self) -> hyper::client::connect::Connected {
         hyper::client::connect::Connected::new()
     }
@@ -114,7 +117,7 @@ async fn main() {
         .executor(HyperExecutor)
         .build::<HyperConnector, hyper::Body>(connector);
     let res = client
-        .get("http://127.0.0.1:23300/monoio".parse().unwrap())
+        .get("https://www.bytedance.com/".parse().unwrap())
         .await
         .expect("failed to fetch");
     println!("Response status: {}", res.status());

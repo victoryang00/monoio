@@ -8,6 +8,7 @@
 //! submit task will always be executed on the same thread.
 
 #![warn(missing_docs, unreachable_pub)]
+#![allow(stable_features)]
 #![feature(generic_associated_types)]
 #![feature(type_alias_impl_trait)]
 #![feature(box_into_inner)]
@@ -31,6 +32,9 @@ pub mod time;
 
 extern crate alloc;
 
+#[cfg(feature = "sync")]
+pub mod blocking;
+
 pub mod buf;
 pub mod fs;
 pub mod io;
@@ -40,6 +44,8 @@ pub mod utils;
 
 use std::future::Future;
 
+#[cfg(feature = "sync")]
+pub use blocking::spawn_blocking;
 pub use builder::{Buildable, RuntimeBuilder};
 pub use driver::Driver;
 #[cfg(all(target_os = "linux", feature = "iouring"))]
